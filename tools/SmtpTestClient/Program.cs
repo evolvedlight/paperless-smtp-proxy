@@ -1,4 +1,5 @@
 using System.Text;
+using MailKit;
 using MailKit.Net.Smtp;
 using MailKit.Security;
 using MimeKit;
@@ -11,7 +12,6 @@ class Program
     {
         Console.OutputEncoding = Encoding.UTF8;
 
-        // Parse command-line arguments
         var options = ParseArguments(args);
 
         if (options.ShowHelp)
@@ -22,7 +22,6 @@ class Program
 
         PrintBanner();
 
-        // If no specific action/args were provided, offer interactive menu
         if (args.Length == 0)
         {
             return await RunInteractiveMenuAsync();
@@ -35,7 +34,7 @@ class Program
     {
         Console.ForegroundColor = ConsoleColor.Cyan;
         Console.WriteLine("==========================================================");
-        Console.WriteLine("  📬 Paperless SMTP Test Client");
+        Console.WriteLine("  📬 Paperless SMTP Test Client (with Raw Protocol Tracing)");
         Console.WriteLine("==========================================================");
         Console.ResetColor();
     }
@@ -54,18 +53,13 @@ class Program
         Console.WriteLine("  -b, --body <text>       Email message body text");
         Console.WriteLine("  -a, --attach <filepath> Attach a local file (e.g. -a C:\\scan.pdf)");
         Console.WriteLine("      --pdf               Generate and attach a sample invoice PDF");
+        Console.WriteLine("  -v, --verbose           Print full raw SMTP wire protocol logs (C: / S:)");
         Console.WriteLine("      --count <num>       Number of emails to send (default: 1)");
         Console.WriteLine("  -?, --help              Show this help message");
         Console.WriteLine();
         Console.WriteLine("Examples:");
-        Console.WriteLine("  # Send quick test email with sample PDF to local dev server (port 2525)");
-        Console.WriteLine("  dotnet run --project tools/SmtpTestClient -- --pdf");
-        Console.WriteLine();
-        Console.WriteLine("  # Send email to your NAS on port 25");
-        Console.WriteLine("  dotnet run --project tools/SmtpTestClient -- -h 192.168.1.100 -p 25 --pdf");
-        Console.WriteLine();
-        Console.WriteLine("  # Send email with a real local PDF attachment");
-        Console.WriteLine("  dotnet run --project tools/SmtpTestClient -- -a \"D:\\scans\\receipt.pdf\" -s \"Hardware Receipt\"");
+        Console.WriteLine("  # Send test email with full SMTP protocol debug output to NAS IP:");
+        Console.WriteLine("  dotnet run --project tools/SmtpTestClient -- -h 192.168.1.31 -p 25 -v --pdf");
         Console.WriteLine();
     }
 
@@ -77,10 +71,10 @@ class Program
             Console.ForegroundColor = ConsoleColor.Yellow;
             Console.WriteLine("Select an action:");
             Console.ResetColor();
-            Console.WriteLine("  [1] Quick Send: Test Invoice with Sample PDF (to localhost:2525)");
+            Console.WriteLine("  [1] Quick Send: Sample PDF Invoice (to localhost:2525) with Raw Protocol Log");
             Console.WriteLine("  [2] Quick Send: Plain Text Email (no attachment)");
             Console.WriteLine("  [3] Send Real Local File Attachment");
-            Console.WriteLine("  [4] Send to NAS / Remote Host (custom Host & Port)");
+            Console.WriteLine("  [4] Send to NAS / Remote Server (prompt for IP, Port, Verbose)");
             Console.WriteLine("  [5] Bulk Test (send 5 emails in a stream)");
             Console.WriteLine("  [0] Exit");
             Console.Write("\nEnter choice [1-5, 0]: ");
@@ -94,12 +88,14 @@ class Program
             {
                 case "1":
                     options.IncludeSamplePdf = true;
+                    options.Verbose = true;
                     options.Subject = $"Monthly Power Bill #{Random.Shared.Next(10000, 99999)}";
                     await SendEmailAsync(options);
                     break;
 
                 case "2":
                     options.IncludeSamplePdf = false;
+                    options.Verbose = true;
                     options.Subject = $"Server Status Notification #{Random.Shared.Next(100, 999)}";
                     options.Body = "Hello Steve,\n\nThis is a plain test email with no attachments.\n\nAll services operational.";
                     await SendEmailAsync(options);
@@ -117,25 +113,29 @@ class Program
                     }
                     options.AttachmentPath = path;
                     options.Subject = $"Document: {Path.GetFileName(path)}";
+                    options.Verbose = true;
                     await SendEmailAsync(options);
                     break;
 
                 case "4":
-                    Console.Write("Target Host (e.g. 192.168.1.100 or localhost) [localhost]: ");
+                    Console.Write("Target Host IP / Name [192.168.1.31]: ");
                     var h = Console.ReadLine()?.Trim();
-                    if (!string.IsNullOrWhiteSpace(h)) options.Host = h;
+                    options.Host = string.IsNullOrWhiteSpace(h) ? "192.168.1.31" : h;
 
                     Console.Write("Target Port [25]: ");
                     var pStr = Console.ReadLine()?.Trim();
-                    if (int.TryParse(pStr, out var p)) options.Port = p;
-                    else options.Port = 25;
+                    options.Port = int.TryParse(pStr, out var p) ? p : 25;
 
                     Console.Write("Recipient Email [steve@paperless.brown.bg]: ");
                     var to = Console.ReadLine()?.Trim();
                     if (!string.IsNullOrWhiteSpace(to)) options.To = to;
 
+                    Console.Write("Enable Full Raw SMTP Protocol Debug Logging? (y/n) [y]: ");
+                    var vChoice = Console.ReadLine()?.Trim().ToLower();
+                    options.Verbose = vChoice != "n";
+
                     options.IncludeSamplePdf = true;
-                    options.Subject = $"Remote Test Bill #{Random.Shared.Next(10000, 99999)}";
+                    options.Subject = $"NAS Test Bill #{Random.Shared.Next(10000, 99999)}";
                     await SendEmailAsync(options);
                     break;
 
@@ -150,7 +150,8 @@ class Program
                             Host = options.Host,
                             Port = options.Port,
                             Subject = $"Bulk Document Batch #{i} of {count} - Ref {Random.Shared.Next(1000, 9999)}",
-                            IncludeSamplePdf = true
+                            IncludeSamplePdf = true,
+                            Verbose = false
                         };
                         Console.WriteLine($"\n--- Sending email {i} of {count} ---");
                         await SendEmailAsync(burstOpt);
@@ -187,14 +188,12 @@ class Program
                 """
             };
 
-            // Custom file attachment
             if (!string.IsNullOrWhiteSpace(options.AttachmentPath) && File.Exists(options.AttachmentPath))
             {
                 Console.WriteLine($"📎 Attaching file: {options.AttachmentPath}");
                 await bodyBuilder.Attachments.AddAsync(options.AttachmentPath);
             }
 
-            // Generated sample PDF attachment
             if (options.IncludeSamplePdf)
             {
                 var pdfBytes = GenerateSamplePdf(options.Subject, options.From, options.To);
@@ -206,17 +205,39 @@ class Program
             message.Body = bodyBuilder.ToMessageBody();
 
             Console.WriteLine();
-            Console.WriteLine($"Connecting to SMTP server at {options.Host}:{options.Port}...");
+            Console.WriteLine($"🌐 Connecting to SMTP socket at {options.Host}:{options.Port}...");
 
-            using var client = new SmtpClient();
-            
-            // Connect with no TLS requirement for local / internal relay
+            IProtocolLogger logger = options.Verbose 
+                ? new ProtocolLogger(Console.OpenStandardOutput(), false) 
+                : new NullProtocolLogger();
+
+            using var client = new SmtpClient(logger);
+
+            if (options.Verbose)
+            {
+                Console.ForegroundColor = ConsoleColor.DarkGray;
+                Console.WriteLine("--- [RAW SMTP PROTOCOL TRACE START] ---");
+                Console.ResetColor();
+            }
+
+            // Connect with no TLS requirement for internal LAN / development
             await client.ConnectAsync(options.Host, options.Port, SecureSocketOptions.None);
+
+            if (options.Verbose)
+            {
+                Console.ForegroundColor = ConsoleColor.DarkGray;
+                Console.WriteLine("--- [RAW SMTP PROTOCOL TRACE END] ---");
+                Console.ResetColor();
+            }
+
             Console.ForegroundColor = ConsoleColor.Green;
             Console.WriteLine($"✓ Connected to {options.Host}:{options.Port}");
             Console.ResetColor();
 
-            Console.WriteLine($"Sending message: From='{options.From}' -> To='{options.To}' | Subject='{options.Subject}'...");
+            // Print server capabilities & banner
+            Console.WriteLine($"   Server Greeting / Host: {client.Capabilities}");
+
+            Console.WriteLine($"📤 Sending message: From='{options.From}' -> To='{options.To}' | Subject='{options.Subject}'...");
             
             var startTime = DateTime.UtcNow;
             var response = await client.SendAsync(message);
@@ -225,7 +246,7 @@ class Program
             await client.DisconnectAsync(true);
 
             Console.ForegroundColor = ConsoleColor.Green;
-            Console.WriteLine($"🎉 Email delivered successfully in {elapsed.TotalMilliseconds:0}ms!");
+            Console.WriteLine($"🎉 SMTP Transaction Completed in {elapsed.TotalMilliseconds:0}ms!");
             Console.WriteLine($"   Server Response: {response}");
             Console.ResetColor();
             return 0;
@@ -236,6 +257,15 @@ class Program
             Console.WriteLine($"❌ Failed to deliver email to {options.Host}:{options.Port}");
             Console.WriteLine($"   Error: {ex.Message}");
             Console.ResetColor();
+
+            Console.WriteLine();
+            Console.ForegroundColor = ConsoleColor.Yellow;
+            Console.WriteLine("💡 Troubleshooting Tips:");
+            Console.WriteLine($"1. Is the Docker container on {options.Host} running and port {options.Port} mapped to host port {options.Port}?");
+            Console.WriteLine("2. Check if your NAS host OS already has a Mail Server / Postfix daemon listening on port 25.");
+            Console.WriteLine("3. Run with '-v' (e.g. -v -h 192.168.1.31 -p 25) to see the exact server banner returned.");
+            Console.ResetColor();
+
             return 1;
         }
     }
@@ -279,6 +309,10 @@ class Program
                     break;
                 case "--pdf":
                     options.IncludeSamplePdf = true;
+                    break;
+                case "-v":
+                case "--verbose":
+                    options.Verbose = true;
                     break;
                 case "-?":
                 case "--help":
@@ -344,5 +378,6 @@ class SmtpOptions
     public string Body { get; set; } = "Hello Steve,\n\nPlease find attached your monthly invoice statement.\n\nThank you!";
     public string? AttachmentPath { get; set; }
     public bool IncludeSamplePdf { get; set; } = false;
+    public bool Verbose { get; set; } = false;
     public bool ShowHelp { get; set; } = false;
 }

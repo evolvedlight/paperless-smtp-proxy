@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Paperless Inbound Mail Server</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📬</text></svg>">
+</head>
+<body>
+    <!-- Header -->
+    <header class="header">
+        <div class="logo-area">
+            <div class="logo-icon">📬</div>
+            <div class="logo-text">
+                <h1>Paperless Mail Listener</h1>
+                <span>steve@paperless.brown.bg</span>
+            </div>
+        </div>
+
+        <div class="header-actions">
+            <div id="connectionBadge" class="status-badge disconnected">
+                <span class="pulse-dot"></span>
+                <span id="connectionText">Connecting...</span>
+            </div>
+
+            <button id="btnOpenTestModal" class="btn btn-primary">
+                <span>🧪</span> Send Test Email
+            </button>
+
+            <button id="btnOpenInfoModal" class="btn">
+                <span>⚙️</span> Setup & Guide
+            </button>
+
+            <button id="btnClearHistory" class="btn btn-danger btn-sm" title="Clear in-memory email buffer">
+                <span>🗑️</span> Clear
+            </button>
+        </div>
+    </header>
+
+    <!-- Stats Bar -->
+    <div class="stats-bar">
+        <div class="stat-item">
+            <span>📥 Emails Received:</span>
+            <span id="statTotal" class="stat-value">0</span>
+        </div>
+        <div class="stat-item">
+            <span>📎 Attachments Processed:</span>
+            <span id="statAttachments" class="stat-value">0</span>
+        </div>
+        <div class="stat-item">
+            <span>📄 Paperless Integration:</span>
+            <span id="statPaperless" class="stat-value">Checking...</span>
+        </div>
+        <div class="stat-item">
+            <span>🌐 SMTP Server:</span>
+            <span id="statSmtpInfo" class="stat-value">Port :25</span>
+        </div>
+    </div>
+
+    <!-- Main Container -->
+    <main class="main-container">
+        <!-- Left Pane: Mail Feed -->
+        <aside class="sidebar-pane">
+            <div class="search-filter-box">
+                <div class="search-input-wrapper">
+                    <span class="search-icon">🔍</span>
+                    <input type="text" id="searchInput" class="search-input" placeholder="Search sender, subject, attachments...">
+                </div>
+                <div class="filter-pills">
+                    <button class="filter-pill active" data-filter="all">All</button>
+                    <button class="filter-pill" data-filter="attachments">📎 Has Attachments</button>
+                    <button class="filter-pill" data-filter="uploaded">✅ Uploaded</button>
+                    <button class="filter-pill" data-filter="failed">❌ Failed</button>
+                </div>
+            </div>
+
+            <ul id="emailList" class="email-list">
+                <!-- Dynamically populated -->
+            </ul>
+
+            <div id="emptyListState" class="empty-state">
+                <div class="empty-icon">📭</div>
+                <h4>No emails received yet</h4>
+                <p style="font-size: 0.8rem;">Incoming SMTP messages sent to <code>steve@paperless.brown.bg</code> will appear here automatically in real time via SignalR.</p>
+                <button class="btn btn-primary btn-sm" onclick="document.getElementById('btnOpenTestModal').click()">Send Mock Test Email</button>
+            </div>
+        </aside>
+
+        <!-- Right Pane: Email Inspector -->
+        <section class="detail-pane" id="detailPane">
+            <!-- When no email is selected -->
+            <div id="noEmailSelectedState" class="empty-state">
+                <div class="empty-icon">📨</div>
+                <h3>Select an email to view details</h3>
+                <p>You can inspect metadata, view rendered message bodies, download attachments, and push documents to Paperless.</p>
+            </div>
+
+            <!-- When email is selected -->
+            <div id="emailDetailsContent" style="display: none; height: 100%; display: flex; flex-direction: column;">
+                <div class="detail-header">
+                    <div class="detail-title-row">
+                        <h2 class="detail-subject" id="detailSubject">(No Subject)</h2>
+                        <button id="btnUploadAllToPaperless" class="btn btn-accent btn-sm" style="display: none;">
+                            📄 Send All to Paperless
+                        </button>
+                    </div>
+
+                    <div class="envelope-grid">
+                        <span class="envelope-label">From:</span>
+                        <span class="envelope-val" id="detailFrom"></span>
+
+                        <span class="envelope-label">To:</span>
+                        <span class="envelope-val" id="detailTo"></span>
+
+                        <span class="envelope-label">Cc:</span>
+                        <span class="envelope-val" id="detailCc"></span>
+
+                        <span class="envelope-label">Date:</span>
+                        <span class="envelope-val" id="detailDate"></span>
+
+                        <span class="envelope-label">Size:</span>
+                        <span class="envelope-val" id="detailSize"></span>
+                    </div>
+
+                    <div class="paperless-banner">
+                        <div class="paperless-info">
+                            <span class="paperless-logo">📄</span>
+                            <div>
+                                <strong style="font-size: 0.85rem;">Paperless-ngx Status:</strong>
+                                <span id="detailPaperlessStatus" class="paperless-pill"></span>
+                                <div id="detailPaperlessMsg" style="font-size: 0.75rem; color: var(--text-muted); margin-top: 2px;"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Tabs -->
+                <nav class="content-tabs-nav">
+                    <button class="tab-btn active" data-target="tabBodyHtml">
+                        🌐 HTML Body
+                    </button>
+                    <button class="tab-btn" data-target="tabBodyText">
+                        📝 Plain Text
+                    </button>
+                    <button class="tab-btn" data-target="tabAttachments">
+                        📎 Attachments <span id="tabAttachmentCount" class="tab-badge">0</span>
+                    </button>
+                    <button class="tab-btn" data-target="tabHeaders">
+                        🏷️ SMTP Headers
+                    </button>
+                </nav>
+
+                <div class="tab-content">
+                    <!-- HTML Body Pane -->
+                    <div class="tab-pane active" id="tabBodyHtml">
+                        <iframe id="htmlBodyFrame" class="body-render-frame" sandbox="allow-same-origin"></iframe>
+                        <div id="noHtmlBodyMsg" class="empty-state" style="display: none; padding: 2rem;">
+                            <p>No HTML body part found in this email message.</p>
+                        </div>
+                    </div>
+
+                    <!-- Plain Text Pane -->
+                    <div class="tab-pane" id="tabBodyText">
+                        <pre class="text-body-pre" id="textBodyPre"></pre>
+                    </div>
+
+                    <!-- Attachments Pane -->
+                    <div class="tab-pane" id="tabAttachments">
+                        <div id="attachmentsGrid" class="attachments-grid"></div>
+                        <div id="noAttachmentsMsg" class="empty-state" style="display: none; padding: 2rem;">
+                            <div class="empty-icon">📎</div>
+                            <p>No file attachments were included with this email.</p>
+                        </div>
+                    </div>
+
+                    <!-- Headers Pane -->
+                    <div class="tab-pane" id="tabHeaders">
+                        <table class="headers-table">
+                            <tbody id="headersTableBody"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- Bottom Activity Console Drawer -->
+    <div class="console-drawer" id="consoleDrawer">
+        <div class="console-header" id="consoleToggle">
+            <span>⚡ Real-Time SMTP & Hub Log Console</span>
+            <span style="font-size: 0.7rem;">Click to expand/collapse ▲</span>
+        </div>
+        <div class="console-logs" id="consoleLogs">
+            <!-- Dynamic logs -->
+        </div>
+    </div>
+
+    <!-- Modal: Send Test Email -->
+    <div class="modal-backdrop" id="testEmailModal">
+        <div class="modal">
+            <div class="modal-header">
+                <h3>🧪 Send Simulated Test Email</h3>
+                <button class="modal-close" id="closeTestModal">&times;</button>
+            </div>
+            <form id="testEmailForm">
+                <div class="modal-body">
+                    <p style="font-size: 0.8rem; color: var(--text-muted);">
+                        Inject a mock email directly into the ingestion pipeline to test SignalR live events, parsing, and Paperless upload.
+                    </p>
+                    <div class="form-group">
+                        <label for="testFrom">Sender (From)</label>
+                        <input type="text" id="testFrom" class="form-control" value="vendor-billing@electric-company.com" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="testTo">Recipient (To)</label>
+                        <input type="text" id="testTo" class="form-control" value="steve@paperless.brown.bg" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="testSubject">Subject</label>
+                        <input type="text" id="testSubject" class="form-control" value="Monthly Utility Bill #88412" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="testBody">Message Body</label>
+                        <textarea id="testBody" class="form-control" rows="3" required>Hello Steve,
+
+Please find attached your monthly invoice statement.
+Total Amount Due: $142.50
+Due Date: Next 15 days.
+
+Thank you!</textarea>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-check">
+                            <input type="checkbox" id="testIncludePdf" checked>
+                            <span>📎 Attach sample invoice PDF (<code>Invoice_Test.pdf</code>)</span>
+                        </label>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn" id="btnCancelTest">Cancel</button>
+                    <button type="submit" class="btn btn-primary" id="btnSubmitTest">Send Mock Email</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal: Setup & Info Guide -->
+    <div class="modal-backdrop" id="infoModal">
+        <div class="modal" style="max-width: 650px;">
+            <div class="modal-header">
+                <h3>⚙️ Setup Guide & Portainer Configuration</h3>
+                <button class="modal-close" id="closeInfoModal">&times;</button>
+            </div>
+            <div class="modal-body" style="font-size: 0.85rem; line-height: 1.6;">
+                <h4 style="color: var(--accent);">1. Current Server Settings</h4>
+                <div style="background: var(--bg-primary); padding: 0.75rem; border-radius: 6px; font-family: var(--font-mono); font-size: 0.8rem; margin-bottom: 1rem;">
+                    <div>SMTP Port: <span id="infoSmtpPort" style="color: #fff;">25</span></div>
+                    <div>Domain: <span id="infoSmtpDomain" style="color: #fff;">paperless.brown.bg</span></div>
+                    <div>Paperless Base URL: <span id="infoPaperlessUrl" style="color: #fff;"></span></div>
+                    <div>Paperless API: <span id="infoPaperlessStatus" style="color: #fff;"></span></div>
+                </div>
+
+                <h4 style="color: var(--accent);">2. DNS MX Record Configuration</h4>
+                <p style="color: var(--text-secondary); margin-bottom: 0.5rem;">
+                    To receive emails sent from any outside email provider (Gmail, Outlook, iCloud, etc.) to <code>steve@paperless.brown.bg</code>:
+                </p>
+                <ol style="margin-left: 1.25rem; color: var(--text-secondary); margin-bottom: 1rem;">
+                    <li>Add an <strong>A</strong> or <strong>CNAME</strong> record for <code>paperless.brown.bg</code> pointing to your home public IP or dynamic DNS hostname.</li>
+                    <li>Add an <strong>MX</strong> record for <code>paperless.brown.bg</code> pointing to <code>paperless.brown.bg</code> with Priority <code>10</code>.</li>
+                    <li>Forward WAN Port <strong>25 (TCP)</strong> on your home router to your NAS IP on port 25.</li>
+                </ol>
+
+                <h4 style="color: var(--accent);">3. Portainer / Docker Deployment</h4>
+                <p style="color: var(--text-secondary);">
+                    Deploy using the included <code>docker-compose.yml</code> in Portainer (Stacks &rarr; Add Stack). Make sure the container joins the same Docker network as Paperless to communicate directly via internal container name (e.g. <code>http://paperless-web:8000</code>).
+                </p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-primary" id="btnCloseInfo">Got it</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="/js/signalr.min.js"></script>
+    <script src="/js/app.js"></script>
+</body>
+</html>

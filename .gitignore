@@ -1,0 +1,22 @@
+## .NET
+[Bb]in/
+[Oo]bj/
+[Ll]og/
+[Ll]ogs/
+.vs/
+.vscode/
+*.user
+*.userosscache
+*.sln.docstates
+*.suo
+
+## Node
+node_modules/
+npm-debug.log*
+
+## OS / IDE
+.DS_Store
+Thumbs.db
+desktop.ini
+*.swp
+*~

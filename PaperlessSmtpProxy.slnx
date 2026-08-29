@@ -1,0 +1,6 @@
+<Solution>
+  <Folder Name="/tools/">
+    <Project Path="tools/SmtpTestClient/SmtpTestClient.csproj" />
+  </Folder>
+  <Project Path="HomeSmtpServer.csproj" />
+</Solution>

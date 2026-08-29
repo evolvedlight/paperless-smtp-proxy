@@ -14,7 +14,11 @@ builder.Services.Configure<PaperlessSettings>(builder.Configuration.GetSection("
 // Register Core Services
 builder.Services.AddSingleton<IEmailRepository, InMemoryEmailRepository>();
 builder.Services.AddSingleton<CustomMessageStore>();
+builder.Services.AddSingleton<SmtpServer.Storage.IMessageStore>(sp => sp.GetRequiredService<CustomMessageStore>());
+
 builder.Services.AddSingleton<CustomMailboxFilter>();
+builder.Services.AddSingleton<SmtpServer.Storage.IMailboxFilter>(sp => sp.GetRequiredService<CustomMailboxFilter>());
+
 builder.Services.AddSingleton<IEmailProcessingService, EmailProcessingService>();
 
 // Register Paperless HttpClient & Service

@@ -223,19 +223,13 @@ class Program
             // Connect with no TLS requirement for internal LAN / development
             await client.ConnectAsync(options.Host, options.Port, SecureSocketOptions.None);
 
-            if (options.Verbose)
+            if (!options.Verbose)
             {
-                Console.ForegroundColor = ConsoleColor.DarkGray;
-                Console.WriteLine("--- [RAW SMTP PROTOCOL TRACE END] ---");
+                Console.ForegroundColor = ConsoleColor.Green;
+                Console.WriteLine($"✓ Connected to {options.Host}:{options.Port}");
                 Console.ResetColor();
+                Console.WriteLine($"   Server Capabilities: {client.Capabilities}");
             }
-
-            Console.ForegroundColor = ConsoleColor.Green;
-            Console.WriteLine($"✓ Connected to {options.Host}:{options.Port}");
-            Console.ResetColor();
-
-            // Print server capabilities & banner
-            Console.WriteLine($"   Server Greeting / Host: {client.Capabilities}");
 
             Console.WriteLine($"📤 Sending message: From='{options.From}' -> To='{options.To}' | Subject='{options.Subject}'...");
             
@@ -244,6 +238,13 @@ class Program
             var elapsed = DateTime.UtcNow - startTime;
 
             await client.DisconnectAsync(true);
+
+            if (options.Verbose)
+            {
+                Console.ForegroundColor = ConsoleColor.DarkGray;
+                Console.WriteLine("--- [RAW SMTP PROTOCOL TRACE END] ---");
+                Console.ResetColor();
+            }
 
             Console.ForegroundColor = ConsoleColor.Green;
             Console.WriteLine($"🎉 SMTP Transaction Completed in {elapsed.TotalMilliseconds:0}ms!");
